@@ -10,6 +10,14 @@ int main(int argc, char **argv) {
         VMwrite(5 * i * PAGE_SIZE, i);
     }
 
+
+    word_t val;
+    for (int i = 0; i < 2 * NUM_FRAMES; ++i)
+    {
+        VMread(5*i*PAGE_SIZE, &val);
+        printf("found in %d the value %d\n", i, val);
+    }
+
     for (uint64_t i = 0; i < (2 * NUM_FRAMES); ++i) {
         word_t value;
         VMread(5 * i * PAGE_SIZE, &value);
@@ -17,6 +25,11 @@ int main(int argc, char **argv) {
         assert(uint64_t(value) == i);
     }
     printf("success\n");
-
+//    VMwrite(13,3);
+//    word_t val;
+//    VMread(6, &val);
+//    printf("value: %d\n", val);
+//    VMread(31, &val);
+//    printf("value: %d\n", val);
     return 0;
 }
