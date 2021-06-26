@@ -54,8 +54,6 @@ void dfs(searchInfo& info, uint64_t currFrameIdx, uint64_t prevFrame, uint64_t p
         return;
     }
 
-
-
     bool foundEmpty = true;
     for(int i = 0 ; i < PAGE_SIZE; ++i)
     {
@@ -136,7 +134,6 @@ uint64_t getPhysicalAddress(uint64_t virtualAddress)
         PMread(currTableIdx * PAGE_SIZE + tableOffsets[i], &idx);
         if (idx == 0)
         {
-            // todo Check if This Part is working
             idx = getEmptyFrame(lastfound);
             lastfound = idx;
             clearTable(idx);
@@ -154,16 +151,6 @@ uint64_t getPhysicalAddress(uint64_t virtualAddress)
         PMrestore(currTableIdx, restoredPageIndex);
     }
     return currTableIdx * PAGE_SIZE + offset;
-
-
-//    word_t res;
-//    PMread(currTableIdx * PAGE_SIZE + tableOffsets[TABLES_DEPTH - 1], &res);
-//
-//    if(res == 0)
-//    {
-//        PMrestore(res, virtualAddress >> OFFSET_WIDTH);
-//    }
-//    return currTableIdx * PAGE_SIZE + offset;
 
 }
 
@@ -188,8 +175,5 @@ int VMwrite(uint64_t virtualAddress, word_t value)
     uint64_t physicalAddress = getPhysicalAddress(virtualAddress);
     PMwrite(physicalAddress, value);
 
-//    //deleteme
-//    word_t val;
-//    PMread(physicalAddress, &val);
     return 1;
 }
