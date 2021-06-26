@@ -8,11 +8,9 @@ struct searchInfo
     uint64_t emptyFrameIdx;
     uint64_t evictedParent;
     uint64_t evictedIdx;
-    uint64_t parentAddr;
+    int parentAddr;
     uint64_t maxFrameIdx;
-    
     int maxWeightFound;
-    bool foundEmptyFrame;
 };
 
 void clearTable(uint64_t frameIndex)
@@ -31,7 +29,7 @@ void VMinitialize()
 /**
  * Try to find an empty frame, update searchInfo appropriately.
  */
-void dfs(int depth, uint64_t parentAddr, int oddCount, int evenCount, searchInfo &info)
+void dfs(int depth, uint64_t parentAddr, int oddCount, int evenCount,uint64_t lastFoundIdx, searchInfo &info)
 {
     if (depth == TABLES_DEPTH)
     {
@@ -53,6 +51,7 @@ void dfs(int depth, uint64_t parentAddr, int oddCount, int evenCount, searchInfo
     }
 
     word_t resAddr;
+    bool foundEmpty = true;
     for (int i = 0; i < PAGE_SIZE; ++i)
     {
         PMread(info.currFrameIdx * PAGE_SIZE + i, &resAddr);
@@ -60,22 +59,21 @@ void dfs(int depth, uint64_t parentAddr, int oddCount, int evenCount, searchInfo
         // current frame is not empty
         if(resAddr != 0)
         {
+            foundEmpty = false;
             uint64_t oldAddr= info.currFrameIdx;
             info.currFrameIdx = resAddr;
             if(oldAddr % 2 == 0)
             {
-                dfs(depth + 1,PAGE_SIZE*oldAddr+i, oddCount, evenCount+1, info);
+                dfs(depth + 1,PAGE_SIZE*oldAddr+i, oddCount, evenCount+1,lastFoundIdx, info);
             }
             else
             {
-                dfs(depth + 1,PAGE_SIZE*oldAddr+i, oddCount+1, evenCount, info);
+                dfs(depth + 1,PAGE_SIZE*oldAddr+i, oddCount+1, evenCount, lastFoundIdx,info);
             }
-            return;
         }
     }
-    if(!info.foundEmptyFrame)
+    if(foundEmpty && info.emptyFrameIdx != lastFoundIdx)
     {
-        info.foundEmptyFrame = true;
         info.emptyFrameIdx = info.currFrameIdx;
         info.parentAddr = parentAddr;
     }
@@ -85,39 +83,42 @@ void dfs(int depth, uint64_t parentAddr, int oddCount, int evenCount, searchInfo
 /**
  * find an empty frame exists and evict/restore when necessary
  */
-uint64_t getEmptyFrame(uint64_t virtualAddress)
+uint64_t getEmptyFrame(uint64_t virtualAddress, uint64_t lastFoundIdx)
 {
     searchInfo info = {0, 0, 0,0, false};
+    info.evictedParent = -1;
+    info.evictedIdx = 0;
     uint64_t page = virtualAddress >> OFFSET_WIDTH;
     if(page % 2 == 0)
     {
-        dfs(0,0,0,1, info);
+        dfs(0,-1,0,1, lastFoundIdx,info);
     }
     else{
-        dfs(0,0,1,0, info);
+        dfs(0,-1,1,0, lastFoundIdx, info);
     }
 
     // found frame with empty table
-    if(info.foundEmptyFrame && info.emptyFrameIdx != 0)
+    if(info.emptyFrameIdx != 0)
     {
-        PMwrite(info.parentAddr, 0);
-        return info.emptyFrameIdx;
+        if(info.parentAddr != -1)
+        {
+            PMwrite(info.parentAddr, 0);
+        }
     }
-
-    if(info.maxFrameIdx < NUM_FRAMES)
+    if(info.maxFrameIdx + 1 < NUM_FRAMES)
     {
         return info.maxFrameIdx + 1;
     }
 
-    if(!info.foundEmptyFrame)
+    // otherwise we have to evict
+    if(info.evictedIdx != 0 and info.evictedParent != -1)
     {
         PMwrite(info.evictedParent, 0);
         PMevict(info.evictedIdx, page);
         return info.evictedIdx;
     }
+    return 0;
 
-
-    return 0; // todo: change
 }
 
 
@@ -145,13 +146,17 @@ uint64_t getPhysicalAddress(uint64_t virtualAddress)
     word_t currTableIdx = 0;
     uint64_t tableOffsets[TABLES_DEPTH];
     getTableOffsets(virtualAddress, tableOffsets);
+    uint64_t lastFoundIdx = 0;
+    int flag = 0;
     for (unsigned int i = 0; i < TABLES_DEPTH - 1; ++i)
     {
         PMread(currTableIdx * PAGE_SIZE + tableOffsets[i], &idx);
         if (idx == 0)
         {
-            idx = getEmptyFrame(virtualAddress);
+            idx = getEmptyFrame(virtualAddress, lastFoundIdx);
+            lastFoundIdx = idx;
             clearTable(idx);
+            flag = 1;
             PMwrite(currTableIdx * PAGE_SIZE + tableOffsets[i], idx);
         }
         currTableIdx = idx;
@@ -159,15 +164,14 @@ uint64_t getPhysicalAddress(uint64_t virtualAddress)
 
     word_t res;
     PMread(currTableIdx * PAGE_SIZE + tableOffsets[TABLES_DEPTH - 1], &res);
-
     if(res == 0)
     {
-        res = getEmptyFrame(virtualAddress);
+        res = getEmptyFrame(virtualAddress, lastFoundIdx);
         PMrestore(res, virtualAddress >> OFFSET_WIDTH);
         PMwrite(currTableIdx * PAGE_SIZE + tableOffsets[TABLES_DEPTH - 1], res);
     }
 
-    word_t offset = virtualAddress & ((1 << OFFSET_WIDTH) -1);
+    word_t offset = virtualAddress & (((uint64_t)1 << OFFSET_WIDTH) -1u);
 
     return res * PAGE_SIZE + offset;
 }
@@ -192,9 +196,5 @@ int VMwrite(uint64_t virtualAddress, word_t value)
     }
     uint64_t physicalAddress = getPhysicalAddress(virtualAddress);
     PMwrite(physicalAddress, value);
-
-    //deleteme
-    word_t val;
-    PMread(physicalAddress, &val);
     return 1;
 }
