@@ -7,6 +7,8 @@ struct searchInfo
    uint64_t emptyFrameIdx;
    uint64_t parentAddr;
    uint64_t maxFrameFound;
+   uint64_t maxWeightParent;
+   uint64_t numPage;
    int maxWeightFound;
    uint64_t maxWeightFrameIdx;
 };
@@ -27,7 +29,7 @@ void VMinitialize()
 /**
  * Try to find an empty frame, update searchInfo appropriately.
  */
-void dfs(searchInfo& info, uint64_t currFrameIdx, uint64_t prevFrame, uint64_t parentAddr, int currWeight, int currDepth)
+void dfs(searchInfo& info, uint64_t currFrameIdx, uint64_t prevFrame, uint64_t parentAddr, int currWeight, int currDepth, uint64_t pageNum)
 {
 
     if(currFrameIdx > info.maxFrameFound)
@@ -38,11 +40,15 @@ void dfs(searchInfo& info, uint64_t currFrameIdx, uint64_t prevFrame, uint64_t p
     if(currDepth == TABLES_DEPTH)
     {
 
-        if(currWeight > info.maxWeightFound)
+        (pageNum % 2 == 0)? currWeight += WEIGHT_EVEN : currWeight += WEIGHT_ODD;
+        (currFrameIdx % 2 == 0)? currWeight += WEIGHT_EVEN : currWeight += WEIGHT_ODD;
+
+        if(currWeight > info.maxWeightFound || (currWeight == info.maxWeightFound && info.numPage > pageNum))
         {
+            info.numPage = pageNum;
             info.maxWeightFound = currWeight; //todo fix it
             info.maxWeightFrameIdx = currFrameIdx;
-            info.parentAddr = parentAddr;
+            info.maxWeightParent = parentAddr;
         }
 
         return;
@@ -59,7 +65,8 @@ void dfs(searchInfo& info, uint64_t currFrameIdx, uint64_t prevFrame, uint64_t p
         {
             foundEmpty = false;
             int weight = (currFrameIdx % 2 == 0)? WEIGHT_EVEN : WEIGHT_ODD;
-            dfs(info, res, prevFrame, currFrameIdx * PAGE_SIZE + i, currWeight + weight, currDepth + 1);
+            dfs(info, res, prevFrame, currFrameIdx * PAGE_SIZE + i, currWeight + weight, currDepth + 1,
+                (pageNum<< OFFSET_WIDTH)+i);
         }
     }
 
@@ -74,10 +81,10 @@ void dfs(searchInfo& info, uint64_t currFrameIdx, uint64_t prevFrame, uint64_t p
 /**
  * find an empty frame exists and evict/restore when necessary
  */
-uint64_t getEmptyFrame(uint64_t evictedFrameIdx, uint64_t prevFrame)
+uint64_t getEmptyFrame(uint64_t prevFrame)
 {
-    searchInfo info = {0, 0, 0, 0};
-    dfs(info, 0, prevFrame, 0, 0, 0);
+    searchInfo info = {0, 0, 0, 0, 0, 0, 0};
+    dfs(info, 0, prevFrame, 0, 0, 0, 0);
     // case 1 : found empty frame
     if(info.emptyFrameIdx != 0)
     {
@@ -90,8 +97,8 @@ uint64_t getEmptyFrame(uint64_t evictedFrameIdx, uint64_t prevFrame)
         return info.maxFrameFound + 1;
     }
     // case 3 : evict leaf table
-    PMwrite(info.parentAddr, 0);
-    PMevict(info.maxWeightFrameIdx, evictedFrameIdx);
+    PMwrite(info.maxWeightParent, 0);
+    PMevict(info.maxWeightFrameIdx, info.numPage);
     return info.maxWeightFrameIdx;
 }
 
@@ -130,7 +137,7 @@ uint64_t getPhysicalAddress(uint64_t virtualAddress)
         if (idx == 0)
         {
             // todo Check if This Part is working
-            idx = getEmptyFrame(virtualAddress >> OFFSET_WIDTH, lastfound);
+            idx = getEmptyFrame(lastfound);
             lastfound = idx;
             clearTable(idx);
             PMwrite(currTableIdx * PAGE_SIZE + tableOffsets[i], idx);
