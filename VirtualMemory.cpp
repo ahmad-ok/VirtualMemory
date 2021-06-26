@@ -169,7 +169,7 @@ uint64_t getPhysicalAddress(uint64_t virtualAddress)
 
 int VMread(uint64_t virtualAddress, word_t *value)
 {
-    if (virtualAddress > VIRTUAL_MEMORY_SIZE)
+    if (virtualAddress >= VIRTUAL_MEMORY_SIZE)
     {
         return 0;
     }
@@ -181,7 +181,7 @@ int VMread(uint64_t virtualAddress, word_t *value)
 
 int VMwrite(uint64_t virtualAddress, word_t value)
 {
-    if (virtualAddress > VIRTUAL_MEMORY_SIZE)
+    if (virtualAddress >= VIRTUAL_MEMORY_SIZE)
     {
         return 0;
     }
