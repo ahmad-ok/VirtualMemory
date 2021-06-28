@@ -4,13 +4,14 @@
 
 struct searchInfo
 {
-   uint64_t emptyFrameIdx;
-   uint64_t parentAddr;
-   uint64_t maxFrameFound;
-   uint64_t maxWeightParent;
-   uint64_t numPage;
-   int maxWeightFound;
-   uint64_t maxWeightFrameIdx;
+    uint64_t emptyFrameIdx;
+    uint64_t parentAddr;
+    uint64_t maxFrameFound;
+    uint64_t maxWeightParent;
+    uint64_t numPage;
+    uint64_t maxweightPage;
+    int maxWeightFound;
+    uint64_t maxWeightFrameIdx;
 };
 
 void clearTable(uint64_t frameIndex)
@@ -32,6 +33,11 @@ void VMinitialize()
 void dfs(searchInfo& info, uint64_t currFrameIdx, uint64_t prevFrame, uint64_t parentAddr, int currWeight, int currDepth, uint64_t pageNum)
 {
 
+    if(info.emptyFrameIdx != 0)
+    {
+        return;
+    }
+
     if(currFrameIdx > info.maxFrameFound)
     {
         info.maxFrameFound = currFrameIdx;
@@ -45,13 +51,14 @@ void dfs(searchInfo& info, uint64_t currFrameIdx, uint64_t prevFrame, uint64_t p
 
         if(currWeight > info.maxWeightFound || (currWeight == info.maxWeightFound && info.numPage > pageNum))
         {
-            info.numPage = pageNum;
-            info.maxWeightFound = currWeight; //todo fix it
+            info.maxweightPage = pageNum;
+            info.maxWeightFound = currWeight;
             info.maxWeightFrameIdx = currFrameIdx;
             info.maxWeightParent = parentAddr;
         }
 
         return;
+
     }
 
     bool foundEmpty = true;
@@ -64,8 +71,10 @@ void dfs(searchInfo& info, uint64_t currFrameIdx, uint64_t prevFrame, uint64_t p
             foundEmpty = false;
             int weight = (currFrameIdx % 2 == 0)? WEIGHT_EVEN : WEIGHT_ODD;
             dfs(info, res, prevFrame, currFrameIdx * PAGE_SIZE + i, currWeight + weight, currDepth + 1,
-                (pageNum<< OFFSET_WIDTH)+i);
+                (pageNum << OFFSET_WIDTH)+i);
+
         }
+
     }
 
     if(foundEmpty && currFrameIdx != prevFrame)
@@ -81,12 +90,16 @@ void dfs(searchInfo& info, uint64_t currFrameIdx, uint64_t prevFrame, uint64_t p
  */
 uint64_t getEmptyFrame(uint64_t prevFrame)
 {
-    searchInfo info = {0, 0, 0, 0, 0, 0, 0};
+    searchInfo info = {0, 0, 0, 0, 0, 0, 0, 0};
     dfs(info, 0, prevFrame, 0, 0, 0, 0);
     // case 1 : found empty frame
     if(info.emptyFrameIdx != 0)
     {
-        PMwrite(info.parentAddr, 0);
+        if(info.emptyFrameIdx != prevFrame)
+        {
+            PMwrite(info.parentAddr, 0);
+        }
+
         return info.emptyFrameIdx;
     }
     // case 2 : max + 1 < frame
@@ -96,7 +109,7 @@ uint64_t getEmptyFrame(uint64_t prevFrame)
     }
     // case 3 : evict leaf table
     PMwrite(info.maxWeightParent, 0);
-    PMevict(info.maxWeightFrameIdx, info.numPage);
+    PMevict(info.maxWeightFrameIdx, info.maxweightPage);
     return info.maxWeightFrameIdx;
 }
 
@@ -135,11 +148,11 @@ uint64_t getPhysicalAddress(uint64_t virtualAddress)
         if (idx == 0)
         {
             idx = getEmptyFrame(lastfound);
-            lastfound = idx;
             clearTable(idx);
             PMwrite(currTableIdx * PAGE_SIZE + tableOffsets[i], idx);
             flag = 0;
         }
+        lastfound = idx;
         currTableIdx = idx;
 
     }
